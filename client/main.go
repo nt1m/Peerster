@@ -16,7 +16,6 @@ func main() {
     "message to be sent")
   flag.Parse()
 
-  // msg := "hello"
   msg := Message{Text: *msgstr}
   packetBytes, err := protobuf.Encode(&msg)
   conn, err := net.Dial("udp4", "127.0.0.1:" + *UIPort)
@@ -24,7 +23,4 @@ func main() {
   if (err != nil) {
     fmt.Println(err)
   }
-  // fmt.Println(udpAddr)
-  // fmt.Println(conn)
-  //
 }

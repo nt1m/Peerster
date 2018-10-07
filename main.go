@@ -3,10 +3,9 @@ package main
 import (
   "fmt"
   "flag"
-  "net"
+  "time"
   "github.com/dedis/protobuf"
   . "Peerster/types"
-  "Peerster/utils"
 )
 
 var (
@@ -18,79 +17,97 @@ var (
     "name of the gossiper")
   peers = flag.String("peers", "127.0.0.1:5001,10.1.1.7:5002",
     "comma separated list of peers of the form ip:port")
-  simple = flag.Bool("simple", true,
+  simpleMode = flag.Bool("simple", false,
     "run gossiper in simple broadcast mode")
 )
 
 func main() {
   flag.Parse()
 
-  fmt.Println("Simple", *simple)
+  fmt.Println("Running with -simple=", *simpleMode)
 
-  clientChannel := make(chan Message);
-  localChannel := make(chan GossipPacket);
+  clientChannel := make(chan Message)
+  localChannel := make(chan GossipPacket)
 
+  antiEntropy := time.NewTicker(time.Second)
   client := NewClient("127.0.0.1:" + *UIPort)
   receiver := NewGossiper(*gossipAddr, *name, *peers)
 
   for {
-    go handleClientMessages(receiver, client, clientChannel);
-    go handleServerMessages(receiver, localChannel);
+    go handleClientMessages(receiver, client, clientChannel)
+    go handleServerMessages(receiver, localChannel)
     select {
-    case msg := <-clientChannel:
-      fmt.Println("CLIENT MESSAGE", msg.Text);
+    case <-clientChannel:
       break;
-    case packet := <-localChannel:
-      fmt.Println("SIMPLE MESSAGE origin", packet.Simple.OriginalName, "from", packet.Simple.RelayPeerAddr, "contents", packet.Simple.Contents);
+    case <-localChannel:
+      break;
+    case <-antiEntropy.C:
+      go (func() {
+        random := receiver.RandomPeer(nil)
+        receiver.SendPacket(random, &GossipPacket{nil, nil, receiver.GetStatusPacket()})
+      })()
       break;
     }
   }
 }
 
 func handleServerMessages(receiver *Gossiper, c chan GossipPacket) {
-  buf := make([]byte, 4096)
+  packetBytes := make([]byte, 4096)
   var packet GossipPacket
 
-  n, sender, _ := receiver.Conn.ReadFromUDP(buf)
-  protobuf.Decode(buf[:n], &packet)
+  n, sender, _ := receiver.Conn.ReadFromUDP(packetBytes)
+  protobuf.Decode(packetBytes[:n], &packet)
   receiver.AddPeer(sender)
 
   fmt.Println("PEERS", receiver.PeersAsString())
 
-  packetBytes, err := protobuf.Encode(&packet)
-  utils.CheckError(err)
-
   if packet.Simple != nil {
     packet.Simple.RelayPeerAddr = sender.String()
-    forwardToAllPeers(receiver, sender, packetBytes)
+    packet.Simple.Log()
+    receiver.ForwardToAllPeers(sender, packetBytes)
   }
 
   if packet.Rumor != nil {
-    // XXX: Forward the message if new
+    // XXX: ignore message if arrived in non-linear order
+    packet.Rumor.Log(sender.String())
+    // Forward the message if new
     if receiver.IsNewRumor(packet.Rumor) {
-      receiver.UpdateStatus(packet.Rumor)
-      receiver.Conn.WriteToUDP(packetBytes, receiver.RandomPeer())
+      receiver.RecordMessage(packet.Rumor)
+      receiver.MongerMessage(packet.Rumor, nil, false)
     }
-  
+
+    statusPacket := &GossipPacket{
+      nil,
+      nil,
+      receiver.GetStatusPacket(),
+    }
+    receiver.SendPacket(sender, statusPacket)
   }
 
   if packet.Status != nil {
-    // XXX: Status
+    if receiver.Timeouts[sender.String()] != nil {
+      close(receiver.Timeouts[sender.String()])
+      receiver.Timeouts[sender.String()] = nil
+    }
 
+    packet.Status.Log(sender.String())
+
+    newMessage := receiver.GetNewMessageForPeer(packet.Status)
+    if newMessage != nil {
+      fmt.Println("IN SYNC WITH", sender.String())
+      // Do I have a new message for other peer ? Yes, spread it
+      receiver.MongerMessage(newMessage, nil, false)
+    } else if receiver.PeerHasMessages(packet.Status) {
+      // Does peer have new messages ? Yes, notify the sender of status
+      receiver.SendPacket(sender, &GossipPacket{nil, nil, receiver.GetStatusPacket()})
+    } else {
+      fmt.Println("IN SYNC WITH", sender.String())
+      // No, do a coin flip
+      // go receiver.CoinFlip(sender)
+    }
   }
 
   c <- packet
-}
-
-
-func forwardToAllPeers(gossiper *Gossiper, sender *net.UDPAddr, packetBytes []byte) {
-  for _,peer := range gossiper.Peers {
-    // Don't send to the person who just sent to you
-    if (peer.String() == sender.String()) {
-      return;
-    }
-    gossiper.Conn.WriteToUDP(packetBytes, peer)
-  }
 }
 
 func handleClientMessages(gossiper *Gossiper, client *Client, c chan Message) {
@@ -99,19 +116,26 @@ func handleClientMessages(gossiper *Gossiper, client *Client, c chan Message) {
   client.Conn.ReadFromUDP(buf)
   protobuf.Decode(buf, &msg)
 
-
-  packet := &GossipPacket{
-    &SimpleMessage{
+  if *simpleMode {
+    packet := &GossipPacket{
+      &SimpleMessage{
+        gossiper.Name,
+        *gossipAddr,
+        msg.Text,
+      },
+      nil,
+      nil,
+    }
+    packetBytes := EncodePacket(packet)
+    gossiper.ForwardToAllPeers(gossiper.Address, packetBytes)
+  } else {
+    gossiper.MongerMessage(&RumorMessage{
       gossiper.Name,
-      *gossipAddr,
+      gossiper.CurrentID,
       msg.Text,
-    },
-    nil,
-    nil,
+    }, nil, false)
+    gossiper.CurrentID = gossiper.CurrentID + 1
   }
-  packetBytes, err := protobuf.Encode(packet)
-
-  utils.CheckError(err)
-  forwardToAllPeers(gossiper, gossiper.Address, packetBytes)
+  fmt.Println("CLIENT MESSAGE", msg.Text)
   c <- msg
 }

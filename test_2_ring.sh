@@ -8,7 +8,7 @@ cd ..
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
-DEBUG="false"
+DEBUG="true"
 
 outputFiles=()
 message_c1_1=Weather_is_clear
@@ -56,7 +56,7 @@ pkill -f Peerster
 #testing
 failed="F"
 
-echo -e "${RED}###CHECK that client messages arrived${NC}"
+echo -e "${NC}###CHECK that client messages arrived${NC}"
 
 if !(grep -q "CLIENT MESSAGE $message_c1_1" "E.out") ; then
 	failed="T"
@@ -85,7 +85,7 @@ else
 fi
 
 failed="F"
-echo -e "${RED}###CHECK rumor messages ${NC}"
+echo -e "${NC}###CHECK rumor messages ${NC}"
 
 gossipPort=5000
 for i in `seq 0 9`;
@@ -104,24 +104,39 @@ do
 	if [[ "$gossipPort" != 5004 ]] ; then
 		if !(grep -Eq "$msgLine1" "${outputFiles[$i]}") ; then
         	failed="T"
+					if [[ "$DEBUG" == "true" ]] ; then
+						echo -e "${RED}FAIL ${NC} $msgLine1 in ${outputFiles[$i]}"
+					fi
     	fi
 		if !(grep -Eq "$msgLine2" "${outputFiles[$i]}") ; then
         	failed="T"
+					if [[ "$DEBUG" == "true" ]] ; then
+						echo -e "${RED}FAIL ${NC} $msgLine2 in ${outputFiles[$i]}"
+					fi
     	fi
 	fi
 
 	if [[ "$gossipPort" != 5001 ]] ; then
 		if !(grep -Eq "$msgLine3" "${outputFiles[$i]}") ; then
         	failed="T"
+					if [[ "$DEBUG" == "true" ]] ; then
+						echo -e "${RED}FAIL ${NC} $msgLine3 in ${outputFiles[$i]}"
+					fi
     	fi
 		if !(grep -Eq "$msgLine4" "${outputFiles[$i]}") ; then
         	failed="T"
+					if [[ "$DEBUG" == "true" ]] ; then
+						echo -e "${RED}FAIL ${NC} $msgLine4 in ${outputFiles[$i]}"
+					fi
     	fi
 	fi
-	
+
 	if [[ "$gossipPort" != 5006 ]] ; then
 		if !(grep -Eq "$msgLine5" "${outputFiles[$i]}") ; then
         	failed="T"
+					if [[ "$DEBUG" == "true" ]] ; then
+						echo -e "${RED}FAIL ${NC} $msgLine5 in ${outputFiles[$i]}"
+					fi
     	fi
 	fi
 	gossipPort=$(($gossipPort+1))
@@ -134,7 +149,7 @@ else
 fi
 
 failed="F"
-echo -e "${RED}###CHECK mongering${NC}"
+echo -e "${NC}###CHECK mongering${NC}"
 gossipPort=5000
 for i in `seq 0 9`;
 do
@@ -149,6 +164,10 @@ do
 
     if !(grep -q "$msgLine1" "${outputFiles[$i]}") && !(grep -q "$msgLine2" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine1 in ${outputFiles[$i]}"
+					echo -e "${RED}or FAIL ${NC} $msgLine2 in ${outputFiles[$i]}"
+				fi
     fi
     gossipPort=$(($gossipPort+1))
 done
@@ -161,7 +180,7 @@ fi
 
 
 failed="F"
-echo -e "${RED}###CHECK status messages ${NC}"
+echo -e "${NC}###CHECK status messages ${NC}"
 gossipPort=5000
 for i in `seq 0 9`;
 do
@@ -175,22 +194,37 @@ do
 	msgLine2="STATUS from 127.0.0.1:$nextPort"
 	msgLine3="peer E nextID 3"
 	msgLine4="peer B nextID 3"
-	msgLine5="peer G nextID 2"	
+	msgLine5="peer G nextID 2"
 
 	if !(grep -q "$msgLine1" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine1 in ${outputFiles[$i]}"
+				fi
     fi
     if !(grep -q "$msgLine2" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine2 in ${outputFiles[$i]}"
+				fi
     fi
     if !(grep -q "$msgLine3" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine3 in ${outputFiles[$i]}"
+				fi
     fi
     if !(grep -q "$msgLine4" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine4 in ${outputFiles[$i]}"
+				fi
     fi
     if !(grep -q "$msgLine5" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine5 in ${outputFiles[$i]}"
+				fi
     fi
 	gossipPort=$(($gossipPort+1))
 done
@@ -202,7 +236,7 @@ else
 fi
 
 failed="F"
-echo -e "${RED}###CHECK flipped coin${NC}"
+echo -e "${NC}###CHECK flipped coin${NC}"
 gossipPort=5000
 for i in `seq 0 9`;
 do
@@ -217,9 +251,15 @@ do
 
     if !(grep -q "$msgLine1" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine1 in ${outputFiles[$i]}"
+				fi
     fi
     if !(grep -q "$msgLine2" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine2 in ${outputFiles[$i]}"
+				fi
     fi
 	gossipPort=$(($gossipPort+1))
 
@@ -232,7 +272,7 @@ else
 fi
 
 failed="F"
-echo -e "${RED}###CHECK in sync${NC}"
+echo -e "${NC}###CHECK in sync${NC}"
 gossipPort=5000
 for i in `seq 0 9`;
 do
@@ -247,9 +287,15 @@ do
 
     if !(grep -q "$msgLine1" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine1 in ${outputFiles[$i]}"
+				fi
     fi
     if !(grep -q "$msgLine2" "${outputFiles[$i]}") ; then
         failed="T"
+				if [[ "$DEBUG" == "true" ]] ; then
+					echo -e "${RED}FAIL ${NC} $msgLine2 in ${outputFiles[$i]}"
+				fi
     fi
 	gossipPort=$(($gossipPort+1))
 done
@@ -261,7 +307,7 @@ else
 fi
 
 failed="F"
-echo -e "${RED}###CHECK correct peers${NC}"
+echo -e "${NC}###CHECK correct peers${NC}"
 gossipPort=5000
 for i in `seq 0 9`;
 do
@@ -285,4 +331,3 @@ if [[ "$failed" == "T" ]] ; then
 else
     echo -e "${GREEN}***PASSED***${NC}"
 fi
-
