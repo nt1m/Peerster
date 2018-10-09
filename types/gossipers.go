@@ -19,7 +19,6 @@ type Gossiper struct {
   Conn *net.UDPConn
   Name string
   Peers []*net.UDPAddr
-  CurrentID uint32
   Messages map[string]map[uint32]*RumorMessage // Map[Origin -> Map[Identifier][RumorMessage]]
   Timeouts map[string](chan bool)
   LastMessage map[string]*RumorMessage
@@ -61,7 +60,6 @@ func NewGossiper(address, name, peerStr string) *Gossiper {
     Conn: udpConn,
     Name: name,
     Peers: peerAddrs,
-    CurrentID: 1,
     Messages: make(map[string]map[uint32]*RumorMessage),
     Timeouts: make(map[string](chan bool)),
     LastMessage: make(map[string]*RumorMessage),

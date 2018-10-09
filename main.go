@@ -138,12 +138,11 @@ func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
   } else {
     rumor := &RumorMessage{
       gossiper.Name,
-      gossiper.CurrentID,
+      gossiper.GetNextIDForOrigin(gossiper.Name),
       msg.Text,
     }
     gossiper.RecordMessage(rumor)
     gossiper.MongerMessage(rumor, nil, false)
-    gossiper.CurrentID = gossiper.CurrentID + 1
   }
   fmt.Println("CLIENT MESSAGE", msg.Text)
   c <- true
