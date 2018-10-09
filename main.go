@@ -6,6 +6,7 @@ import (
   "time"
   "github.com/dedis/protobuf"
   . "Peerster/types"
+  . "Peerster/webserver"
 )
 
 var (
@@ -24,18 +25,18 @@ var (
 func main() {
   flag.Parse()
 
-  fmt.Println("Running with -simple=", *simpleMode)
-
-  clientChannel := make(chan Message)
-  localChannel := make(chan GossipPacket)
+  clientChannel := make(chan bool)
+  localChannel := make(chan bool)
 
   antiEntropy := time.NewTicker(time.Second)
   client := NewClient("127.0.0.1:" + *UIPort)
-  receiver := NewGossiper(*gossipAddr, *name, *peers)
+  gossiper := NewGossiper(*gossipAddr, *name, *peers)
+
+  go NewWebServer(*UIPort, gossiper)
 
   for {
-    go handleClientMessages(receiver, client, clientChannel)
-    go handleServerMessages(receiver, localChannel)
+    go handleClientMessages(gossiper, client, clientChannel)
+    go handleServerMessages(gossiper, localChannel)
     select {
     case <-clientChannel:
       break;
@@ -43,74 +44,80 @@ func main() {
       break;
     case <-antiEntropy.C:
       go (func() {
-        random := receiver.RandomPeer(nil)
-        receiver.SendPacket(random, &GossipPacket{nil, nil, receiver.GetStatusPacket()})
+        random := gossiper.RandomPeer(gossiper.LastInteraction)
+        gossiper.SendPacket(random, &GossipPacket{nil, nil, gossiper.GetStatusPacket()})
       })()
       break;
     }
   }
 }
 
-func handleServerMessages(receiver *Gossiper, c chan GossipPacket) {
+
+func handleServerMessages(gossiper *Gossiper, c chan bool) {
   packetBytes := make([]byte, 4096)
   var packet GossipPacket
 
-  n, sender, _ := receiver.Conn.ReadFromUDP(packetBytes)
+  n, sender, _ := gossiper.Conn.ReadFromUDP(packetBytes)
   protobuf.Decode(packetBytes[:n], &packet)
-  receiver.AddPeer(sender)
+  gossiper.AddPeer(sender)
 
-  fmt.Println("PEERS", receiver.PeersAsString())
+  fmt.Println("PEERS", gossiper.PeersAsString())
 
   if packet.Simple != nil {
     packet.Simple.RelayPeerAddr = sender.String()
     packet.Simple.Log()
-    receiver.ForwardToAllPeers(sender, packetBytes)
+    gossiper.ForwardToAllPeers(sender, packetBytes)
   }
 
   if packet.Rumor != nil {
-    // XXX: ignore message if arrived in non-linear order
+    // Ignore message if arrived in non-linear order
+    if gossiper.ShouldIgnoreRumor(packet.Rumor) {
+      c <- false
+      return
+    }
     packet.Rumor.Log(sender.String())
-    // Forward the message if new
-    if receiver.IsNewRumor(packet.Rumor) {
-      receiver.RecordMessage(packet.Rumor)
-      receiver.MongerMessage(packet.Rumor, nil, false)
-    }
 
-    statusPacket := &GossipPacket{
-      nil,
-      nil,
-      receiver.GetStatusPacket(),
+    // Forward the message if new
+    if gossiper.IsNewRumor(packet.Rumor) {
+      gossiper.RecordMessage(packet.Rumor)
+      // Exclude sender, as they just sent it to us.
+      gossiper.MongerMessage(packet.Rumor, sender, false)
     }
-    receiver.SendPacket(sender, statusPacket)
+    gossiper.LastInteraction = sender
+    gossiper.LastMessage[sender.String()] = packet.Rumor
+    gossiper.SendPacket(sender, &GossipPacket{
+      nil,
+      nil,
+      gossiper.GetStatusPacket(),
+    })
   }
 
   if packet.Status != nil {
-    if receiver.Timeouts[sender.String()] != nil {
-      close(receiver.Timeouts[sender.String()])
-      receiver.Timeouts[sender.String()] = nil
+    if gossiper.Timeouts[sender.String()] != nil {
+      close(gossiper.Timeouts[sender.String()])
+      gossiper.Timeouts[sender.String()] = nil
     }
 
     packet.Status.Log(sender.String())
 
-    newMessage := receiver.GetNewMessageForPeer(packet.Status)
+    newMessage := gossiper.GetNewMessageForPeer(packet.Status)
     if newMessage != nil {
-      fmt.Println("IN SYNC WITH", sender.String())
       // Do I have a new message for other peer ? Yes, spread it
-      receiver.MongerMessage(newMessage, nil, false)
-    } else if receiver.PeerHasMessages(packet.Status) {
+      gossiper.MongerMessage(newMessage, nil, false)
+    } else if gossiper.PeerHasMessages(packet.Status) {
       // Does peer have new messages ? Yes, notify the sender of status
-      receiver.SendPacket(sender, &GossipPacket{nil, nil, receiver.GetStatusPacket()})
+      gossiper.SendPacket(sender, &GossipPacket{nil, nil, gossiper.GetStatusPacket()})
     } else {
       fmt.Println("IN SYNC WITH", sender.String())
       // No, do a coin flip
-      // go receiver.CoinFlip(sender)
+      go gossiper.CoinFlip(gossiper.LastMessage[sender.String()], sender)
     }
   }
 
-  c <- packet
+  c <- true
 }
 
-func handleClientMessages(gossiper *Gossiper, client *Client, c chan Message) {
+func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
   buf := make([]byte, 4096)
   var msg Message
   client.Conn.ReadFromUDP(buf)
@@ -129,13 +136,15 @@ func handleClientMessages(gossiper *Gossiper, client *Client, c chan Message) {
     packetBytes := EncodePacket(packet)
     gossiper.ForwardToAllPeers(gossiper.Address, packetBytes)
   } else {
-    gossiper.MongerMessage(&RumorMessage{
+    rumor := &RumorMessage{
       gossiper.Name,
       gossiper.CurrentID,
       msg.Text,
-    }, nil, false)
+    }
+    gossiper.RecordMessage(rumor)
+    gossiper.MongerMessage(rumor, nil, false)
     gossiper.CurrentID = gossiper.CurrentID + 1
   }
   fmt.Println("CLIENT MESSAGE", msg.Text)
-  c <- msg
+  c <- true
 }

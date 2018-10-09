@@ -41,13 +41,13 @@ do
 	name=$(echo "$name" | tr "A-Y" "B-Z")
 done
 
-./client/client -UIPort=12349 -msg=$message_c1_1
-./client/client -UIPort=12346 -msg=$message_c2_1
+./client/client -UIPort=12349 -msg=$message_c1_1 # E
+./client/client -UIPort=12346 -msg=$message_c2_1 # B
 sleep 2
-./client/client -UIPort=12349 -msg=$message_c1_2
+./client/client -UIPort=12349 -msg=$message_c1_2 # E
 sleep 1
-./client/client -UIPort=12346 -msg=$message_c2_2
-./client/client -UIPort=12351 -msg=$message_c3
+./client/client -UIPort=12346 -msg=$message_c2_2 # B
+./client/client -UIPort=12351 -msg=$message_c3 # G
 
 sleep 5
 pkill -f Peerster

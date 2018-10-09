@@ -2,8 +2,10 @@ package types
 
 import (
   "fmt"
+  "strconv"
   "github.com/dedis/protobuf"
   "Peerster/utils"
+  "encoding/json"
 )
 
 type SimpleMessage struct {
@@ -59,13 +61,20 @@ func (msg *RumorMessage) Log(relayAddress string) {
   fmt.Println("RUMOR origin", msg.Origin, "from", relayAddress, "ID", msg.ID, "contents", msg.Text)
 }
 
+func (msg *RumorMessage) ToJSON() string {
+  // return `{origin: "` + msg.Origin + `", id: "` + strconv.FormatUint(uint64(msg.ID), 10) + `", "contents: "` + msg.Text + `"}`
+  bytes, err := json.Marshal(msg)
+  utils.CheckError(err)
+  return string(bytes)
+}
+
 func (packet *StatusPacket) Log(relayAddress string) {
   str := ""
   for i, status := range packet.Want {
     if i > 0 {
       str += " "
     }
-    str += "peer " + status.Identifier + " nextID " + string(status.NextID)
+    str += "peer " + status.Identifier + " nextID " + strconv.FormatUint(uint64(status.NextID), 10)
   }
-  fmt.Println("STATUS from", relayAddress, "peer", str)
+  fmt.Println("STATUS from", relayAddress, str)
 }

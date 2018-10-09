@@ -24,3 +24,9 @@ func SetTimeout(callback func(), duration time.Duration) chan bool {
   }()
   return stop
 }
+
+func Assert(condition bool) {
+  if !condition {
+    panic("Assert failed")
+  }
+}

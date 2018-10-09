@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Peerster</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div id="sidebar">
+    <h1>Not Slack</h1>
+    <p class="bold">Node ID: <span id="node-id"></span></p>
+    <p class="bold">Connected with:</p>
+    <ul id="node-peers"></ul>
+
+    <p class="bold">Add a new peer:</p>
+    <form id="add-peer-form">
+      <input type="text" class="text-input" id="add-peer-input" placeholder="127.0.0.1:5002"/>
+    </form>
+  </div>
+  <div id="content">
+    <form id="send-form">
+      <input type="text" class="text-input" id="send-input" placeholder="Write a message..."/>
+      <button id="send-button">Send</button>
+    </form>
+    <ul id="messages">
+    </ul>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>

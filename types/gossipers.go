@@ -22,6 +22,8 @@ type Gossiper struct {
   CurrentID uint32
   Messages map[string]map[uint32]*RumorMessage // Map[Origin -> Map[Identifier][RumorMessage]]
   Timeouts map[string](chan bool)
+  LastMessage map[string]*RumorMessage
+  LastInteraction *net.UDPAddr
 }
 
 func NewClient(address string) *Client {
@@ -62,6 +64,7 @@ func NewGossiper(address, name, peerStr string) *Gossiper {
     CurrentID: 1,
     Messages: make(map[string]map[uint32]*RumorMessage),
     Timeouts: make(map[string](chan bool)),
+    LastMessage: make(map[string]*RumorMessage),
   }
 }
 
@@ -80,20 +83,33 @@ func (gossiper* Gossiper) PeersAsString() string {
     if i == 0 {
       str = peer.String()
     } else {
-      str = str + "," + peer.String()
+      str += "," + peer.String()
     }
   }
+  return str
+}
+
+func (gossiper* Gossiper) PeersAsJSON() string {
+  str := "["
+  for i, peer := range gossiper.Peers {
+    if i == 0 {
+      str += `"` + peer.String() + `"`
+    } else {
+      str += "," + `"` + peer.String() + `"`
+    }
+  }
+  str += "]"
   return str
 }
 
 func (gossiper* Gossiper) RandomPeer(exclude *net.UDPAddr) *net.UDPAddr {
   index := rand.Intn(len(gossiper.Peers))
   if exclude != nil {
-    for gossiper.Peers[index].String() != exclude.String() {
+    for gossiper.Peers[index].String() == exclude.String() {
       index = rand.Intn(len(gossiper.Peers))
     }
+    utils.Assert(gossiper.Peers[index].String() != exclude.String())
   }
-
   return gossiper.Peers[index]
 }
 
@@ -110,6 +126,10 @@ func (gossiper* Gossiper) GetNextIDForOrigin(origin string) uint32 {
 
 func (gossiper* Gossiper) GetMessage(origin string, id uint32) *RumorMessage {
   return gossiper.Messages[origin][id]
+}
+
+func (gossiper* Gossiper) ShouldIgnoreRumor(rm *RumorMessage) bool {
+  return gossiper.GetNextIDForOrigin(rm.Origin) < rm.ID
 }
 
 func (gossiper* Gossiper) IsNewRumor(rm *RumorMessage) bool {
@@ -170,9 +190,8 @@ func (gossiper *Gossiper) MongerMessage(msg *RumorMessage, exclude *net.UDPAddr,
   gossiper.SendPacket(destination, &GossipPacket{nil, msg, nil})
   if isFlippedCoin {
     fmt.Println("FLIPPED COIN sending rumor to", destination.String())
-  } else {
-    fmt.Println("MONGERING with", destination.String())
   }
+  fmt.Println("MONGERING with", destination.String())
   gossiper.Timeouts[destination.String()] = utils.SetTimeout(func() {
     gossiper.CoinFlip(msg, exclude)
   }, time.Second)
