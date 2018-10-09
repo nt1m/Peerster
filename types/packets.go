@@ -62,7 +62,6 @@ func (msg *RumorMessage) Log(relayAddress string) {
 }
 
 func (msg *RumorMessage) ToJSON() string {
-  // return `{origin: "` + msg.Origin + `", id: "` + strconv.FormatUint(uint64(msg.ID), 10) + `", "contents: "` + msg.Text + `"}`
   bytes, err := json.Marshal(msg)
   utils.CheckError(err)
   return string(bytes)

@@ -6,15 +6,18 @@
 </head>
 <body>
   <div id="sidebar">
-    <h1>Not Slack</h1>
-    <p class="bold">Node ID: <span id="node-id"></span></p>
-    <p class="bold">Connected to:</p>
-    <ul id="node-peers"></ul>
+    <label for="sidebar-toggle"><h1>Not Slack</h1></label>
+    <input type="checkbox" id="sidebar-toggle">
+    <div id="sidebar-contents">
+      <p class="bold">You are: <span id="node-id"></span></p>
+      <p class="bold">Connected to:</p>
+      <ul id="node-peers"></ul>
 
-    <p class="bold">Add a new peer:</p>
-    <form id="add-peer-form">
-      <input type="text" class="text-input" id="add-peer-input" placeholder="127.0.0.1:5002"/>
-    </form>
+      <p class="bold">Add a new peer:</p>
+      <form id="add-peer-form">
+        <input type="text" class="text-input" id="add-peer-input" placeholder="127.0.0.1:5002"/>
+      </form>
+    </div>
   </div>
   <div id="content">
     <form id="send-form">

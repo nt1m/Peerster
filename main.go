@@ -14,7 +14,7 @@ var (
     "port for the UI client")
   gossipAddr = flag.String("gossipAddr", "127.0.0.1:5000",
     "ip:port for the gossiper")
-  name = flag.String("name", "nodeA",
+  name = flag.String("name", "300358",
     "name of the gossiper")
   peers = flag.String("peers", "127.0.0.1:5001,10.1.1.7:5002",
     "comma separated list of peers of the form ip:port")

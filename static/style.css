@@ -20,21 +20,32 @@ body {
 #sidebar {
   background-color: #38383d;
   min-width: 200px;
-  padding: 2vw
+  padding: 2vw;
+}
+
+#sidebar h1 {
+  margin: 0;
+}
+
+#sidebar-toggle {
+  display: none;
 }
 
 #content {
+  position: relative;
   margin: 0 auto;
   display: flex;
   max-width: 800px;
   flex-grow: 1;
   flex-direction: column;
+  overflow: auto;
 }
 
 #messages {
   flex: 1;
   padding: 2vw;
   margin: 0;
+  min-height: 0;
 }
 
 #messages li {
@@ -66,7 +77,10 @@ body {
   position: sticky;
   overflow: auto;
   padding: 2vw;
+  top: 0;
   border-bottom: 1px solid rgba(255,255,255,0.12);
+  background: #2a2a2e;
+  z-index: 999;
 }
 
 .text-input {
@@ -107,4 +121,18 @@ body {
 
 #send-button:hover:active {
   background: #002275;
+}
+
+@media screen and (max-width: 768px) {
+  body {
+    display: block;
+  }
+
+  #sidebar {
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+  }
+
+  #sidebar-toggle:not(:checked) ~ #sidebar-contents {
+    display: none;
+  }
 }
