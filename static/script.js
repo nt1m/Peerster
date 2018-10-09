@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#send-form").addEventListener("submit", e => {
     e.preventDefault();
     sendMessage($("#send-input").value);
+    $("#send-input").value = "";
   });
 
   $("#add-peer-form").addEventListener("submit", e => {
