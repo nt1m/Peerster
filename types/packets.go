@@ -4,7 +4,7 @@ import (
   "fmt"
   "strconv"
   "github.com/dedis/protobuf"
-  "Peerster/utils"
+  "github.com/nt1m/Peerster/utils"
   "encoding/json"
 )
 

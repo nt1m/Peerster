@@ -21,6 +21,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 });
 
+let receivedMessages = 0;
+
 async function updateStatus() {
   const peers = await getAllPeers();
   $("#node-peers").textContent = "";
@@ -31,8 +33,7 @@ async function updateStatus() {
   }));
 
   const messages = await getAllMessages();
-  $("#messages").textContent = "";
-  $("#messages").append(...messages.map(({ Origin, ID, Text }) => {
+  $("#messages").append(...messages.slice(receivedMessages).map(({ Origin, ID, Text }) => {
     const li = document.createElement("li");
     const originEl = document.createElement("span");
     originEl.textContent = Origin;
@@ -49,6 +50,7 @@ async function updateStatus() {
     li.append(originEl, idEl, contentsEl);
     return li;
   }));
+  receivedMessages = messages.length;
 }
 
 async function getNodeId() {

@@ -5,8 +5,9 @@ import (
   "flag"
   "time"
   "github.com/dedis/protobuf"
-  . "Peerster/types"
-  . "Peerster/webserver"
+  "github.com/nt1m/Peerster/utils"
+  . "github.com/nt1m/Peerster/types"
+  . "github.com/nt1m/Peerster/webserver"
 )
 
 var (
@@ -16,7 +17,7 @@ var (
     "ip:port for the gossiper")
   name = flag.String("name", "300358",
     "name of the gossiper")
-  peers = flag.String("peers", "127.0.0.1:5001,10.1.1.7:5002",
+  peers = flag.String("peers", "127.0.0.1:5001",
     "comma separated list of peers of the form ip:port")
   simpleMode = flag.Bool("simple", false,
     "run gossiper in simple broadcast mode")
@@ -34,13 +35,15 @@ func main() {
 
   go NewWebServer(*UIPort, gossiper)
 
+  go handleClientMessages(gossiper, client, clientChannel)
+  go handleServerMessages(gossiper, localChannel)
   for {
-    go handleClientMessages(gossiper, client, clientChannel)
-    go handleServerMessages(gossiper, localChannel)
     select {
     case <-clientChannel:
+      go handleClientMessages(gossiper, client, clientChannel)
       break;
     case <-localChannel:
+      go handleServerMessages(gossiper, localChannel)
       break;
     case <-antiEntropy.C:
       go (func() {
@@ -57,7 +60,9 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
   packetBytes := make([]byte, 4096)
   var packet GossipPacket
 
-  n, sender, _ := gossiper.Conn.ReadFromUDP(packetBytes)
+  fmt.Println("Waiting for server message...")
+  n, sender, err := gossiper.Conn.ReadFromUDP(packetBytes)
+  utils.CheckError(err)
   protobuf.Decode(packetBytes[:n], &packet)
   gossiper.AddPeer(sender)
 
@@ -120,6 +125,7 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
 func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
   buf := make([]byte, 4096)
   var msg Message
+  fmt.Println("Waiting for client message...")
   client.Conn.ReadFromUDP(buf)
   protobuf.Decode(buf, &msg)
 

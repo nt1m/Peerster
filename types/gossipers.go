@@ -6,7 +6,7 @@ import (
   "strings"
   "time"
   "math/rand"
-  "Peerster/utils"
+  "github.com/nt1m/Peerster/utils"
 )
 
 type Client struct {
@@ -20,6 +20,7 @@ type Gossiper struct {
   Name string
   Peers []*net.UDPAddr
   Messages map[string]map[uint32]*RumorMessage // Map[Origin -> Map[Identifier][RumorMessage]]
+  OrderedMessages []*RumorMessage
   Timeouts map[string](chan bool)
   LastMessage map[string]*RumorMessage
   LastInteraction *net.UDPAddr
@@ -44,7 +45,6 @@ func NewGossiper(address, name, peerStr string) *Gossiper {
   if (err != nil) {
     fmt.Println(err)
   }
-
   peers := strings.Split(
     peerStr, ",")
 
@@ -88,6 +88,10 @@ func (gossiper* Gossiper) PeersAsString() string {
 }
 
 func (gossiper* Gossiper) PeersAsJSON() string {
+  if (len(gossiper.Peers) == 0) {
+    return "[]";
+  }
+
   str := "["
   for i, peer := range gossiper.Peers {
     if i == 0 {
@@ -116,6 +120,7 @@ func (gossiper* Gossiper) RecordMessage(rm *RumorMessage) {
     gossiper.Messages[rm.Origin] = make(map[uint32]*RumorMessage)
   }
   gossiper.Messages[rm.Origin][rm.ID] = rm
+  gossiper.OrderedMessages = append(gossiper.OrderedMessages, rm)
 }
 
 func (gossiper* Gossiper) GetNextIDForOrigin(origin string) uint32 {
@@ -183,6 +188,9 @@ func (gossiper *Gossiper) SendPacket(destination *net.UDPAddr, packet *GossipPac
 }
 
 func (gossiper *Gossiper) MongerMessage(msg *RumorMessage, exclude *net.UDPAddr, isFlippedCoin bool) {
+  if len(gossiper.Peers) == 0 {
+    return;
+  }
   // Forward message to random peer
   destination := gossiper.RandomPeer(exclude)
   gossiper.SendPacket(destination, &GossipPacket{nil, msg, nil})
@@ -191,6 +199,7 @@ func (gossiper *Gossiper) MongerMessage(msg *RumorMessage, exclude *net.UDPAddr,
   }
   fmt.Println("MONGERING with", destination.String())
   gossiper.Timeouts[destination.String()] = utils.SetTimeout(func() {
+    fmt.Println("TIMED OUT with", destination.String())
     gossiper.CoinFlip(msg, exclude)
   }, time.Second)
 }

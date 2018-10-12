@@ -8,7 +8,7 @@ import (
   "bytes"
   "github.com/gorilla/mux"
   "github.com/dedis/protobuf"
-  . "Peerster/types"
+  . "github.com/nt1m/Peerster/types"
 )
 
 var gossiper *Gossiper
@@ -34,27 +34,23 @@ func NewWebServer(p string, g *Gossiper) {
 }
 
 func MessageGetHandler(w http.ResponseWriter, r *http.Request) {
-  fmt.Println("GET /message")
   w.WriteHeader(http.StatusOK)
   w.Header().Set("Content-Type", "application/json")
 
   str := "["
   i := 0
-  for _, msgByID := range gossiper.Messages {
-    for _, message := range msgByID {
-      if i > 0 {
-        str += ","
-      }
-      str += message.ToJSON()
-      i++
+  for _, message := range gossiper.OrderedMessages {
+    if i > 0 {
+      str += ","
     }
+    str += message.ToJSON()
+    i++
   }
   str += "]"
   io.WriteString(w, str)
 }
 
 func MessagePostHandler(w http.ResponseWriter, r *http.Request) {
-  fmt.Println("POST /message")
   buf := new(bytes.Buffer)
   buf.ReadFrom(r.Body)
   str := buf.String()
@@ -70,7 +66,6 @@ func MessagePostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func NodeGetHandler(w http.ResponseWriter, r *http.Request) {
-  fmt.Println("GET /node")
   w.WriteHeader(http.StatusOK)
   w.Header().Set("Content-Type", "application/json")
 
@@ -78,7 +73,6 @@ func NodeGetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func NodePostHandler(w http.ResponseWriter, r *http.Request) {
-  fmt.Println("POST /node")
   buf := new(bytes.Buffer)
   buf.ReadFrom(r.Body)
   str := buf.String()
@@ -93,7 +87,6 @@ func NodePostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func IdGetHandler(w http.ResponseWriter, r *http.Request) {
-  fmt.Println("GET /id")
   w.WriteHeader(http.StatusOK)
   w.Header().Set("Content-Type", "text/plain")
   io.WriteString(w, gossiper.Name)
