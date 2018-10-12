@@ -49,6 +49,7 @@ func main() {
       go (func() {
         random := gossiper.RandomPeer(gossiper.LastInteraction)
         gossiper.SendPacket(random, &GossipPacket{nil, nil, gossiper.GetStatusPacket()})
+        gossiper.LastInteraction = random
       })()
       break;
     }
