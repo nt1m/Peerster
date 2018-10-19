@@ -21,10 +21,14 @@ var (
     "comma separated list of peers of the form ip:port")
   simpleMode = flag.Bool("simple", false,
     "run gossiper in simple broadcast mode")
+  rtimer = flag.Int("rtimer", 0,
+    "route rumors sending period in seconds, 0 to disable sending of route rumors")
 )
 
 func main() {
   flag.Parse()
+
+  var rticker (<-chan time.Time)
 
   clientChannel := make(chan bool)
   localChannel := make(chan bool)
@@ -37,6 +41,11 @@ func main() {
 
   go handleClientMessages(gossiper, client, clientChannel)
   go handleServerMessages(gossiper, localChannel)
+
+  if (*rtimer > 0) {
+    rticker = time.NewTicker(time.Duration(*rtimer) * time.Second).C
+  }
+
   for {
     select {
     case <-clientChannel:
@@ -52,6 +61,16 @@ func main() {
         gossiper.LastInteraction = random
       })()
       break;
+    case <-rticker:
+      go (func() {
+        rumor := &RumorMessage{
+          gossiper.Name,
+          gossiper.GetNextIDForOrigin(gossiper.Name),
+          "",
+        }
+        gossiper.RecordMessage(rumor)
+        gossiper.MongerMessage(rumor, gossiper.LastInteraction, false)
+      })()
     }
   }
 }
@@ -81,7 +100,9 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
       c <- false
       return
     }
+
     packet.Rumor.Log(sender.String())
+    gossiper.UpdateRoute(sender, packet.Rumor)
 
     // Forward the message if new
     if gossiper.IsNewRumor(packet.Rumor) {

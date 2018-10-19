@@ -21,6 +21,7 @@ type Gossiper struct {
   Peers []*net.UDPAddr
   Messages map[string]map[uint32]*RumorMessage // Map[Origin -> Map[Identifier][RumorMessage]]
   OrderedMessages []*RumorMessage
+  Router map[string]string // Map[Origin -> IP:Port]
   Timeouts map[string](chan bool)
   LastMessage map[string]*RumorMessage
   LastInteraction *net.UDPAddr
@@ -61,6 +62,7 @@ func NewGossiper(address, name, peerStr string) *Gossiper {
     Name: name,
     Peers: peerAddrs,
     Messages: make(map[string]map[uint32]*RumorMessage),
+    Router: make(map[string]string),
     Timeouts: make(map[string](chan bool)),
     LastMessage: make(map[string]*RumorMessage),
   }
@@ -106,7 +108,7 @@ func (gossiper* Gossiper) PeersAsJSON() string {
 
 func (gossiper* Gossiper) RandomPeer(exclude *net.UDPAddr) *net.UDPAddr {
   index := rand.Intn(len(gossiper.Peers))
-  if exclude != nil {
+  if exclude != nil && len(gossiper.Peers) > 1 {
     for gossiper.Peers[index].String() == exclude.String() {
       index = rand.Intn(len(gossiper.Peers))
     }
@@ -120,7 +122,9 @@ func (gossiper* Gossiper) RecordMessage(rm *RumorMessage) {
     gossiper.Messages[rm.Origin] = make(map[uint32]*RumorMessage)
   }
   gossiper.Messages[rm.Origin][rm.ID] = rm
-  gossiper.OrderedMessages = append(gossiper.OrderedMessages, rm)
+  if (rm.Text != "") {
+    gossiper.OrderedMessages = append(gossiper.OrderedMessages, rm)
+  }
 }
 
 func (gossiper* Gossiper) GetNextIDForOrigin(origin string) uint32 {
@@ -185,6 +189,11 @@ func (gossiper *Gossiper) SendPacket(destination *net.UDPAddr, packet *GossipPac
   packetBytes := EncodePacket(packet)
 
   gossiper.Conn.WriteToUDP(packetBytes, destination)
+}
+
+func (gossiper *Gossiper) UpdateRoute(sender *net.UDPAddr, msg *RumorMessage) {
+  gossiper.Router[msg.Origin] = sender.String()
+  fmt.Println("DSDV", msg.Origin, sender.String())
 }
 
 func (gossiper *Gossiper) MongerMessage(msg *RumorMessage, exclude *net.UDPAddr, isFlippedCoin bool) {
