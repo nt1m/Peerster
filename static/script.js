@@ -2,6 +2,10 @@ function $(sel) {
   return document.querySelector(sel);
 }
 
+function $$(sel) {
+  return document.querySelectorAll(sel);
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   $("#node-id").textContent = await getNodeId();
 
@@ -55,6 +59,17 @@ async function updateStatus() {
     return li;
   }));
   receivedMessages = messages.length;
+
+  const destinations = await getAllDestinations();
+  const lastDestination = $("#send-destination").value;
+  $("#send-destination").textContent = "";
+  $("#send-destination").append(...destinations.sort((a,b) => a == "" ? -1 : a > b).map(d => {
+    const option = document.createElement("option");
+    option.value = d;
+    option.textContent = d == "" ? "Everyone" : d;
+    return option;
+  }));
+  $("#send-destination").value = destinations.includes(lastDestination) ? lastDestination : "";
 }
 
 async function getNodeId() {
@@ -72,6 +87,11 @@ async function getAllMessages() {
   return JSON.parse(await response.text());
 }
 
+async function getAllDestinations() {
+  const response = await fetch("/destination");
+  return ["", ...JSON.parse(await response.text())];
+}
+
 function sendMessage(message) {
   const headers = new Headers();
   headers.append("Content-Type", "application/json");
@@ -81,7 +101,7 @@ function sendMessage(message) {
     headers,
     body: JSON.stringify({
       Text: message,
-      Destination: "",
+      Destination: $("#send-destination").value,
     }),
   });
 }

@@ -33,12 +33,13 @@ func main() {
   clientChannel := make(chan bool)
   localChannel := make(chan bool)
 
-  antiEntropy := time.NewTicker(10 * time.Second)
+  antiEntropy := time.NewTicker(time.Second)
   client := NewClient("127.0.0.1:" + *UIPort)
   gossiper := NewGossiper(*gossipAddr, *name, *peers)
 
   go NewWebServer(*UIPort, gossiper)
 
+  // Figure out why this fucks test_2_ring.sh
   go gossiper.SendRouteMessage()
 
   go handleClientMessages(gossiper, client, clientChannel)

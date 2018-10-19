@@ -79,12 +79,20 @@ body {
 
 #send-form {
   position: sticky;
-  overflow: auto;
   padding: 2vw;
   top: 0;
   border-bottom: 1px solid rgba(255,255,255,0.12);
   background: #2a2a2e;
   z-index: 999;
+}
+
+#send-form div {
+  overflow: auto;
+  margin-top: 1em;
+}
+
+#send-form div * {
+  vertical-align: middle;
 }
 
 .text-input {
@@ -102,6 +110,16 @@ body {
   border-color: rgba(255,255,255,0.24);
 }
 
+#send-button,
+#send-destination {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: 2px;
+  padding: 0.5em 1em;
+}
+
+#send-destination:focus,
 #send-button:focus,
 .text-input:focus {
   box-shadow: inset 0 0 0 2px #0a84ff, 0 0 0 3px rgba(10, 132, 255, 0.3);
@@ -110,13 +128,7 @@ body {
 #send-button {
   background: #0060df;
   color: white;
-  font: inherit;
-  cursor: pointer;
-  border: none;
-  border-radius: 2px;
-  padding: 0.5em 1em;
   float: right;
-  margin-top: 1em;
 }
 
 #send-button:hover {
@@ -125,6 +137,28 @@ body {
 
 #send-button:hover:active {
   background: #002275;
+}
+
+#send-destination {
+  -moz-appearance: none;
+  background-color: rgba(255, 255, 255, 0.1);
+  color: inherit;
+  background-image: url(dropdown.svg);
+  background-repeat: no-repeat;
+  background-position: center right 5px;
+  padding-right: 2em;
+}
+
+#send-destination:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+#send-destination:hover:active {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+#send-destination option {
+  color: black;
 }
 
 @media screen and (max-width: 768px) {

@@ -22,7 +22,10 @@
   <div id="content">
     <form id="send-form">
       <input type="text" class="text-input" id="send-input" placeholder="Write a message..."/>
-      <button id="send-button">Send</button>
+      <div>
+        <label for="send-destination">To: </label><select id="send-destination"></select>
+        <button id="send-button">Send</button>
+      </div>
     </form>
     <ul id="messages">
     </ul>

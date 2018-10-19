@@ -204,8 +204,11 @@ func (gossiper *Gossiper) SendPacket(destination *net.UDPAddr, packet *GossipPac
 }
 
 func (gossiper *Gossiper) UpdateRoute(sender *net.UDPAddr, msg *RumorMessage) {
-  gossiper.Router[msg.Origin] = sender
-  fmt.Println("DSDV", msg.Origin, sender.String())
+  // Guard from routing yourself
+  if msg.Origin != gossiper.Name {
+    gossiper.Router[msg.Origin] = sender
+    fmt.Println("DSDV", msg.Origin, sender.String())
+  }
 }
 
 func (gossiper *Gossiper) MongerRumor(msg *RumorMessage, exclude *net.UDPAddr, isFlippedCoin bool) {

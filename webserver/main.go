@@ -68,7 +68,16 @@ func MessagePostHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func DestinationGetHandler(w http.ResponseWriter, r *http.Request) {
+  w.WriteHeader(http.StatusOK)
+  w.Header().Set("Content-Type", "application/json")
+  destinations := make([]string, 0, len(gossiper.Router))
+  for destination := range gossiper.Router {
+    destinations = append(destinations, destination)
+  }
 
+  json, err := json.Marshal(&destinations)
+  FailIfErr(w, http.StatusInternalServerError, err)
+  io.WriteString(w, string(json))
 }
 
 func NodeGetHandler(w http.ResponseWriter, r *http.Request) {
