@@ -33,14 +33,18 @@ async function updateStatus() {
   }));
 
   const messages = await getAllMessages();
-  $("#messages").append(...messages.slice(receivedMessages).map(({ Origin, ID, Text }) => {
+  $("#messages").append(...messages.slice(receivedMessages).map(({ Origin, ID, Text, Destination }) => {
     const li = document.createElement("li");
+    li.classList.toggle("private", !!Destination);
+
     const originEl = document.createElement("span");
     originEl.textContent = Origin;
     originEl.className = "message-origin";
 
     const idEl = document.createElement("span");
-    idEl.textContent = ID;
+    if (!Destination) {
+      idEl.textContent = ID;
+    }
     idEl.className = "message-id";
 
     const contentsEl = document.createElement("p");
@@ -70,12 +74,15 @@ async function getAllMessages() {
 
 function sendMessage(message) {
   const headers = new Headers();
-  headers.append("Content-Type", "text/plain");
+  headers.append("Content-Type", "application/json");
 
   return fetch("/message", {
     method: "POST",
     headers,
-    body: message,
+    body: JSON.stringify({
+      Text: message,
+      Destination: "",
+    }),
   });
 }
 

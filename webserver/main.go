@@ -3,6 +3,7 @@ package webserver
 import (
   "net"
   "net/http"
+  "encoding/json"
   "fmt"
   "io"
   "bytes"
@@ -22,6 +23,8 @@ func NewWebServer(p string, g *Gossiper) {
   router.HandleFunc("/message", MessageGetHandler).Methods("GET")
   router.HandleFunc("/message", MessagePostHandler).Methods("POST")
 
+  router.HandleFunc("/destination", DestinationGetHandler).Methods("GET")
+
   router.HandleFunc("/node", NodeGetHandler).Methods("GET")
   router.HandleFunc("/node", NodePostHandler).Methods("POST")
 
@@ -39,7 +42,7 @@ func MessageGetHandler(w http.ResponseWriter, r *http.Request) {
 
   str := "["
   i := 0
-  for _, message := range gossiper.OrderedMessages {
+  for _, message := range gossiper.VisibleMessages {
     if i > 0 {
       str += ","
     }
@@ -51,10 +54,9 @@ func MessageGetHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func MessagePostHandler(w http.ResponseWriter, r *http.Request) {
-  buf := new(bytes.Buffer)
-  buf.ReadFrom(r.Body)
-  str := buf.String()
-  msg := Message{Text: str}
+  decoder := json.NewDecoder(r.Body)
+  var msg Message
+  err := decoder.Decode(&msg)
   packetBytes, err := protobuf.Encode(&msg)
   FailIfErr(w, http.StatusBadRequest, err)
   conn, err := net.Dial("udp4", "127.0.0.1:" + port)
@@ -63,6 +65,10 @@ func MessagePostHandler(w http.ResponseWriter, r *http.Request) {
     conn.Write(packetBytes)
     w.WriteHeader(http.StatusOK)
   }
+}
+
+func DestinationGetHandler(w http.ResponseWriter, r *http.Request) {
+
 }
 
 func NodeGetHandler(w http.ResponseWriter, r *http.Request) {

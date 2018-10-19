@@ -33,11 +33,13 @@ func main() {
   clientChannel := make(chan bool)
   localChannel := make(chan bool)
 
-  antiEntropy := time.NewTicker(time.Second)
+  antiEntropy := time.NewTicker(10 * time.Second)
   client := NewClient("127.0.0.1:" + *UIPort)
   gossiper := NewGossiper(*gossipAddr, *name, *peers)
 
   go NewWebServer(*UIPort, gossiper)
+
+  go gossiper.SendRouteMessage()
 
   go handleClientMessages(gossiper, client, clientChannel)
   go handleServerMessages(gossiper, localChannel)
@@ -50,27 +52,20 @@ func main() {
     select {
     case <-clientChannel:
       go handleClientMessages(gossiper, client, clientChannel)
-      break;
+      break
     case <-localChannel:
       go handleServerMessages(gossiper, localChannel)
-      break;
+      break
     case <-antiEntropy.C:
       go (func() {
         random := gossiper.RandomPeer(gossiper.LastInteraction)
-        gossiper.SendPacket(random, &GossipPacket{nil, nil, gossiper.GetStatusPacket()})
+        gossiper.SendPacket(random, &GossipPacket{nil, nil, gossiper.GetStatusPacket(), nil})
         gossiper.LastInteraction = random
       })()
-      break;
+      break
     case <-rticker:
-      go (func() {
-        rumor := &RumorMessage{
-          gossiper.Name,
-          gossiper.GetNextIDForOrigin(gossiper.Name),
-          "",
-        }
-        gossiper.RecordMessage(rumor)
-        gossiper.MongerMessage(rumor, gossiper.LastInteraction, false)
-      })()
+      go gossiper.SendRouteMessage()
+      break
     }
   }
 }
@@ -95,6 +90,7 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
   }
 
   if packet.Rumor != nil {
+    gossiper.UpdateRoute(sender, packet.Rumor)
     // Ignore message if arrived in non-linear order
     if gossiper.ShouldIgnoreRumor(packet.Rumor) {
       c <- false
@@ -102,20 +98,20 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
     }
 
     packet.Rumor.Log(sender.String())
-    gossiper.UpdateRoute(sender, packet.Rumor)
 
     // Forward the message if new
     if gossiper.IsNewRumor(packet.Rumor) {
-      gossiper.RecordMessage(packet.Rumor)
+      gossiper.RecordRumor(packet.Rumor)
       // Exclude sender, as they just sent it to us.
-      gossiper.MongerMessage(packet.Rumor, sender, false)
+      gossiper.MongerRumor(packet.Rumor, sender, false)
     }
     gossiper.LastInteraction = sender
-    gossiper.LastMessage[sender.String()] = packet.Rumor
+    gossiper.LastRumor[sender.String()] = packet.Rumor
     gossiper.SendPacket(sender, &GossipPacket{
       nil,
       nil,
       gossiper.GetStatusPacket(),
+      nil,
     })
   }
 
@@ -127,17 +123,29 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
 
     packet.Status.Log(sender.String())
 
-    newMessage := gossiper.GetNewMessageForPeer(packet.Status)
+    newMessage := gossiper.GetNewRumorForPeer(packet.Status)
     if newMessage != nil {
       // Do I have a new message for other peer ? Yes, spread it
-      gossiper.MongerMessage(newMessage, nil, false)
-    } else if gossiper.PeerHasMessages(packet.Status) {
+      gossiper.MongerRumor(newMessage, nil, false)
+    } else if gossiper.PeerHasRumors(packet.Status) {
       // Does peer have new messages ? Yes, notify the sender of status
-      gossiper.SendPacket(sender, &GossipPacket{nil, nil, gossiper.GetStatusPacket()})
+      gossiper.SendPacket(sender, &GossipPacket{nil, nil, gossiper.GetStatusPacket(), nil})
     } else {
       fmt.Println("IN SYNC WITH", sender.String())
       // No, do a coin flip
-      go gossiper.CoinFlip(gossiper.LastMessage[sender.String()], sender)
+      go gossiper.CoinFlip(gossiper.LastRumor[sender.String()], sender)
+    }
+  }
+
+  if packet.Private != nil {
+    pm := packet.Private
+    fmt.Println("Received private message", pm)
+    if pm.Destination == gossiper.Name {
+      pm.Log()
+      gossiper.RecordPrivate(pm)
+    } else {
+      pm.HopLimit--
+      gossiper.ForwardPrivate(pm)
     }
   }
 
@@ -151,13 +159,23 @@ func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
   client.Conn.ReadFromUDP(buf)
   protobuf.Decode(buf, &msg)
 
-  if *simpleMode {
+  if msg.Destination != "" {
+    privateMessage := &PrivateMessage{
+      Origin: gossiper.Name,
+      ID: 0,
+      Text: msg.Text,
+      Destination: msg.Destination,
+      HopLimit: 10,
+    }
+    gossiper.ForwardPrivate(privateMessage)
+  } else if *simpleMode {
     packet := &GossipPacket{
       &SimpleMessage{
         gossiper.Name,
         *gossipAddr,
         msg.Text,
       },
+      nil,
       nil,
       nil,
     }
@@ -169,8 +187,8 @@ func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
       gossiper.GetNextIDForOrigin(gossiper.Name),
       msg.Text,
     }
-    gossiper.RecordMessage(rumor)
-    gossiper.MongerMessage(rumor, nil, false)
+    gossiper.RecordRumor(rumor)
+    gossiper.MongerRumor(rumor, nil, false)
   }
   fmt.Println("CLIENT MESSAGE", msg.Text)
   c <- true

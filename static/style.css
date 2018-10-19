@@ -54,6 +54,10 @@ body {
   padding-top: 1em;
 }
 
+#messages .private .message-id::before {
+  content: " - Private Message";
+}
+
 .message-origin {
   border-radius: 2px;
   background: #4a4a4f;

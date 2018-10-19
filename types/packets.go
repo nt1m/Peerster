@@ -20,6 +20,14 @@ type RumorMessage struct {
   Text string
 }
 
+type PrivateMessage struct {
+  Origin string
+  ID uint32
+  Text string
+  Destination string
+  HopLimit uint32
+}
+
 type StatusPacket struct {
   Want []PeerStatus
 }
@@ -31,12 +39,14 @@ type PeerStatus struct {
 
 type Message struct {
   Text string
+  Destination string
 }
 
 type GossipPacket struct {
   Simple *SimpleMessage
   Rumor *RumorMessage
   Status *StatusPacket
+  Private *PrivateMessage
 }
 
 func (packet* StatusPacket) ToMap() map[string]uint32 {
@@ -67,6 +77,22 @@ func (msg *RumorMessage) ToJSON() string {
   return string(bytes)
 }
 
+func (msg *PrivateMessage) ToJSON() string {
+  bytes, err := json.Marshal(msg)
+  utils.CheckError(err)
+  return string(bytes)
+}
+
+func (packet *GossipPacket) ToJSON() string {
+  if packet.Rumor != nil {
+    return packet.Rumor.ToJSON()
+  }
+  if packet.Private != nil {
+    return packet.Private.ToJSON()
+  }
+  return "null"
+}
+
 func (packet *StatusPacket) Log(relayAddress string) {
   str := ""
   for i, status := range packet.Want {
@@ -76,4 +102,8 @@ func (packet *StatusPacket) Log(relayAddress string) {
     str += "peer " + status.Identifier + " nextID " + strconv.FormatUint(uint64(status.NextID), 10)
   }
   fmt.Println("STATUS from", relayAddress, str)
+}
+
+func (packet *PrivateMessage) Log() {
+  fmt.Println("PRIVATE origin", packet.Origin, "hop-limit", packet.HopLimit, "contents", packet.Text)
 }
