@@ -107,6 +107,7 @@ func (gossiper* Gossiper) PeersAsJSON() string {
 }
 
 func (gossiper* Gossiper) RandomPeer(exclude *net.UDPAddr) *net.UDPAddr {
+  rand.Seed(time.Now().UnixNano())
   index := rand.Intn(len(gossiper.Peers))
   if exclude != nil && len(gossiper.Peers) > 1 {
     for gossiper.Peers[index].String() == exclude.String() {
@@ -187,9 +188,9 @@ func (gossiper *Gossiper) PeerHasRumors(peerPacket *StatusPacket) bool {
   return false
 }
 
-func (gossiper *Gossiper) ForwardToAllPeers(sender *net.UDPAddr, packetBytes []byte) {
+func (gossiper *Gossiper) ForwardToAllPeers(sender *net.UDPAddr, packet *GossipPacket) {
   for _, peer := range gossiper.Peers {
-    gossiper.Conn.WriteToUDP(packetBytes, peer)
+    gossiper.SendPacket(peer, packet)
   }
 }
 

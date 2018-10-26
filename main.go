@@ -4,11 +4,17 @@ import (
   "fmt"
   "flag"
   "time"
+  "net"
   "github.com/dedis/protobuf"
   "github.com/nt1m/Peerster/utils"
   . "github.com/nt1m/Peerster/types"
   . "github.com/nt1m/Peerster/webserver"
 )
+
+type PacketResult struct {
+  packet *GossipPacket
+  sender *net.UDPAddr
+}
 
 var (
   UIPort = flag.String("UIPort", "8080",
@@ -30,8 +36,8 @@ func main() {
 
   var rticker (<-chan time.Time)
 
-  clientChannel := make(chan bool)
-  localChannel := make(chan bool)
+  clientChannel := make(chan Message)
+  localChannel := make(chan PacketResult)
 
   antiEntropy := time.NewTicker(time.Second)
   client := NewClient("127.0.0.1:" + *UIPort)
@@ -40,11 +46,11 @@ func main() {
   go NewWebServer(*UIPort, gossiper)
 
   if !*simpleMode {
-    go gossiper.SendRouteMessage()
+    gossiper.SendRouteMessage()
   }
 
-  go handleClientMessages(gossiper, client, clientChannel)
-  go handleServerMessages(gossiper, localChannel)
+  go receiveClientMessage(client, clientChannel)
+  go receiveServerMessage(gossiper, localChannel)
 
   if (*rtimer > 0) {
     rticker = time.NewTicker(time.Duration(*rtimer) * time.Second).C
@@ -52,11 +58,13 @@ func main() {
 
   for {
     select {
-    case <-clientChannel:
-      go handleClientMessages(gossiper, client, clientChannel)
+    case msg := <-clientChannel:
+      go receiveClientMessage(client, clientChannel)
+      handleClientMessage(gossiper, client, &msg)
       break
-    case <-localChannel:
-      go handleServerMessages(gossiper, localChannel)
+    case received := <-localChannel:
+      go receiveServerMessage(gossiper, localChannel)
+      handleServerMessage(gossiper, received.packet, received.sender)
       break
     case <-antiEntropy.C:
       go (func() {
@@ -72,15 +80,25 @@ func main() {
   }
 }
 
-
-func handleServerMessages(gossiper *Gossiper, c chan bool) {
+func receiveServerMessage(gossiper *Gossiper, c chan PacketResult) {
   packetBytes := make([]byte, 4096)
   var packet GossipPacket
-
-  fmt.Println("Waiting for server message...")
   n, sender, err := gossiper.Conn.ReadFromUDP(packetBytes)
   utils.CheckError(err)
   protobuf.Decode(packetBytes[:n], &packet)
+  c <- PacketResult{&packet, sender}
+}
+
+func receiveClientMessage(client *Client, c chan Message) {
+  buf := make([]byte, 4096)
+  var msg Message
+  fmt.Println("Waiting for client message...")
+  client.Conn.ReadFromUDP(buf)
+  protobuf.Decode(buf, &msg)
+  c <- msg
+}
+
+func handleServerMessage(gossiper *Gossiper, packet *GossipPacket, sender *net.UDPAddr) {
   gossiper.AddPeer(sender)
 
   fmt.Println("PEERS", gossiper.PeersAsString())
@@ -88,14 +106,13 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
   if packet.Simple != nil {
     packet.Simple.RelayPeerAddr = sender.String()
     packet.Simple.Log()
-    gossiper.ForwardToAllPeers(sender, packetBytes)
+    gossiper.ForwardToAllPeers(sender, packet)
   }
 
   if packet.Rumor != nil {
     gossiper.UpdateRoute(sender, packet.Rumor)
     // Ignore message if arrived in non-linear order
     if gossiper.ShouldIgnoreRumor(packet.Rumor) {
-      c <- false
       return
     }
 
@@ -150,17 +167,9 @@ func handleServerMessages(gossiper *Gossiper, c chan bool) {
       gossiper.ForwardPrivate(pm)
     }
   }
-
-  c <- true
 }
 
-func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
-  buf := make([]byte, 4096)
-  var msg Message
-  fmt.Println("Waiting for client message...")
-  client.Conn.ReadFromUDP(buf)
-  protobuf.Decode(buf, &msg)
-
+func handleClientMessage(gossiper *Gossiper, client *Client, msg *Message) {
   if msg.Destination != "" {
     privateMessage := &PrivateMessage{
       Origin: gossiper.Name,
@@ -181,8 +190,7 @@ func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
       nil,
       nil,
     }
-    packetBytes := EncodePacket(packet)
-    gossiper.ForwardToAllPeers(gossiper.Address, packetBytes)
+    gossiper.ForwardToAllPeers(gossiper.Address, packet)
   } else {
     rumor := &RumorMessage{
       gossiper.Name,
@@ -193,5 +201,4 @@ func handleClientMessages(gossiper *Gossiper, client *Client, c chan bool) {
     gossiper.MongerRumor(rumor, nil, false)
   }
   fmt.Println("CLIENT MESSAGE", msg.Text)
-  c <- true
 }
