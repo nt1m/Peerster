@@ -39,8 +39,9 @@ func main() {
 
   go NewWebServer(*UIPort, gossiper)
 
-  // Figure out why this fucks test_2_ring.sh
-  go gossiper.SendRouteMessage()
+  if !*simpleMode {
+    go gossiper.SendRouteMessage()
+  }
 
   go handleClientMessages(gossiper, client, clientChannel)
   go handleServerMessages(gossiper, localChannel)

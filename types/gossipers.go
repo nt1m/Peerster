@@ -189,10 +189,6 @@ func (gossiper *Gossiper) PeerHasRumors(peerPacket *StatusPacket) bool {
 
 func (gossiper *Gossiper) ForwardToAllPeers(sender *net.UDPAddr, packetBytes []byte) {
   for _, peer := range gossiper.Peers {
-    // Don't send to the person who just sent to you
-    if (peer.String() == sender.String()) {
-      return;
-    }
     gossiper.Conn.WriteToUDP(packetBytes, peer)
   }
 }
