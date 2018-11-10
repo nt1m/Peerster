@@ -37,9 +37,26 @@ type PeerStatus struct {
   NextID uint32
 }
 
+type DataRequest struct {
+  Origin string
+  Destination string
+  HopLimit uint32
+  HashValue []byte
+}
+
+type DataReply struct {
+  Origin string
+  Destination string
+  HopLimit uint32
+  HashValue []byte
+  Data []byte
+}
+
 type Message struct {
   Text string
   Destination string
+  File string
+  Request string
 }
 
 type GossipPacket struct {
@@ -47,6 +64,8 @@ type GossipPacket struct {
   Rumor *RumorMessage
   Status *StatusPacket
   Private *PrivateMessage
+  DataRequest *DataRequest
+  DataReply   *DataReply
 }
 
 func (packet* StatusPacket) ToMap() map[string]uint32 {

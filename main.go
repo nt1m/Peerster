@@ -5,6 +5,9 @@ import (
   "flag"
   "time"
   "net"
+  "os"
+  "crypto/sha256"
+  "encoding/hex"
   "github.com/dedis/protobuf"
   "github.com/nt1m/Peerster/utils"
   . "github.com/nt1m/Peerster/types"
@@ -69,7 +72,7 @@ func main() {
     case <-antiEntropy.C:
       go (func() {
         random := gossiper.RandomPeer(gossiper.LastInteraction)
-        gossiper.SendPacket(random, &GossipPacket{nil, nil, gossiper.GetStatusPacket(), nil})
+        gossiper.SendPacket(random, &GossipPacket{nil, nil, gossiper.GetStatusPacket(), nil, nil, nil})
         gossiper.LastInteraction = random
       })()
       break
@@ -81,7 +84,7 @@ func main() {
 }
 
 func receiveServerMessage(gossiper *Gossiper, c chan PacketResult) {
-  packetBytes := make([]byte, 4096)
+  packetBytes := make([]byte, 16384)
   var packet GossipPacket
   n, sender, err := gossiper.Conn.ReadFromUDP(packetBytes)
   utils.CheckError(err)
@@ -90,7 +93,7 @@ func receiveServerMessage(gossiper *Gossiper, c chan PacketResult) {
 }
 
 func receiveClientMessage(client *Client, c chan Message) {
-  buf := make([]byte, 4096)
+  buf := make([]byte, 16384)
   var msg Message
   fmt.Println("Waiting for client message...")
   client.Conn.ReadFromUDP(buf)
@@ -102,7 +105,6 @@ func handleServerMessage(gossiper *Gossiper, packet *GossipPacket, sender *net.U
   gossiper.AddPeer(sender)
 
   fmt.Println("PEERS", gossiper.PeersAsString())
-
   if packet.Simple != nil {
     packet.Simple.RelayPeerAddr = sender.String()
     packet.Simple.Log()
@@ -131,6 +133,8 @@ func handleServerMessage(gossiper *Gossiper, packet *GossipPacket, sender *net.U
       nil,
       gossiper.GetStatusPacket(),
       nil,
+      nil,
+      nil,
     })
   }
 
@@ -148,7 +152,7 @@ func handleServerMessage(gossiper *Gossiper, packet *GossipPacket, sender *net.U
       gossiper.MongerRumor(newMessage, nil, false)
     } else if gossiper.PeerHasRumors(packet.Status) {
       // Does peer have new messages ? Yes, notify the sender of status
-      gossiper.SendPacket(sender, &GossipPacket{nil, nil, gossiper.GetStatusPacket(), nil})
+      gossiper.SendPacket(sender, &GossipPacket{nil, nil, gossiper.GetStatusPacket(), nil, nil, nil})
     } else {
       fmt.Println("IN SYNC WITH", sender.String())
       // No, do a coin flip
@@ -158,7 +162,6 @@ func handleServerMessage(gossiper *Gossiper, packet *GossipPacket, sender *net.U
 
   if packet.Private != nil {
     pm := packet.Private
-    fmt.Println("Received private message", pm)
     if pm.Destination == gossiper.Name {
       pm.Log()
       gossiper.RecordPrivate(pm)
@@ -167,10 +170,66 @@ func handleServerMessage(gossiper *Gossiper, packet *GossipPacket, sender *net.U
       gossiper.ForwardPrivate(pm)
     }
   }
+
+  if packet.DataRequest != nil {
+    rq := packet.DataRequest
+    if rq.Destination == gossiper.Name {
+      gossiper.ReplyDataRequest(rq)
+    } else {
+      rq.HopLimit--
+      gossiper.ForwardDataRequest(rq)
+    }
+  }
+
+  if packet.DataReply != nil {
+    rp := packet.DataReply
+    if rp.Destination == gossiper.Name {
+      gossiper.ProcessDataReply(rp)
+    } else {
+      rp.HopLimit--
+      gossiper.ForwardDataReply(rp)
+    }
+  }
 }
 
 func handleClientMessage(gossiper *Gossiper, client *Client, msg *Message) {
-  if msg.Destination != "" {
+  if msg.File != "" && msg.Request != "" {
+    requested, err := hex.DecodeString(msg.Request)
+    utils.CheckError(err)
+    gossiper.AddStubFile(msg.Request, requested, msg.File)
+    gossiper.SendDataRequest(&DataRequest{
+      Origin: gossiper.Name,
+      Destination: msg.Destination,
+      HopLimit: 10,
+      HashValue: requested,
+    })
+  } else if msg.File != "" {
+    file, err := os.Open("_SharedFiles/" + msg.File)
+    utils.CheckError(err)
+    fileStat, err := file.Stat()
+    utils.CheckError(err)
+    end := fileStat.Size()
+
+    numChunks := end / FILE_CHUNK_SIZE
+
+    chunks := make(map[string][]byte)
+    metaFile := make([]byte, 0, 32 * numChunks)
+    offset := int64(0)
+    for offset < end {
+      readLength := utils.Min(FILE_CHUNK_SIZE, end - offset)
+      chunk := make([]byte, readLength)
+      count, err := file.ReadAt(chunk, offset)
+      utils.CheckError(err)
+      chunkHash := sha256.Sum256(chunk)
+      chunks[hex.EncodeToString(chunkHash[:])] = chunk
+      metaFile = append(metaFile, chunkHash[:]...)
+      offset += int64(count)
+    }
+    metaHash := sha256.Sum256(metaFile)
+    gossiper.AddFile(msg.File, end, metaHash, metaFile, chunks, numChunks)
+  }
+
+  if msg.Destination != "" && msg.Text != "" {
     privateMessage := &PrivateMessage{
       Origin: gossiper.Name,
       ID: 0,
@@ -178,8 +237,9 @@ func handleClientMessage(gossiper *Gossiper, client *Client, msg *Message) {
       Destination: msg.Destination,
       HopLimit: 10,
     }
+    gossiper.RecordPrivate(privateMessage)
     gossiper.ForwardPrivate(privateMessage)
-  } else if *simpleMode {
+  } else if *simpleMode && msg.Text != "" {
     packet := &GossipPacket{
       &SimpleMessage{
         gossiper.Name,
@@ -189,9 +249,11 @@ func handleClientMessage(gossiper *Gossiper, client *Client, msg *Message) {
       nil,
       nil,
       nil,
+      nil,
+      nil,
     }
     gossiper.ForwardToAllPeers(gossiper.Address, packet)
-  } else {
+  } else if msg.Text != "" {
     rumor := &RumorMessage{
       gossiper.Name,
       gossiper.GetNextIDForOrigin(gossiper.Name),

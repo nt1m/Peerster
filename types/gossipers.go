@@ -1,13 +1,28 @@
 package types
 
 import (
+  "os"
   "net"
   "fmt"
-  "strings"
   "time"
+  "strings"
   "math/rand"
+  "encoding/hex"
+  "crypto/sha256"
   "github.com/nt1m/Peerster/utils"
 )
+
+var FILE_CHUNK_SIZE = int64(8192)
+
+type File struct {
+  FileName string
+  FileSize int64
+  NumChunks int64
+  Chunks map[string][]byte // Map[Hash -> Bytes]
+  MetaHash []byte
+  MetaFile []byte
+  Status int64
+}
 
 type Client struct {
   Address *net.UDPAddr
@@ -23,6 +38,8 @@ type Gossiper struct {
   VisibleMessages []*GossipPacket
   Router map[string]*net.UDPAddr // Map[Origin -> UDPAddr]
   Timeouts map[string](chan bool)
+  DataRequestTimeouts map[string](chan bool)
+  Files map[string]*File // Map[Hash -> File]
   LastRumor map[string]*RumorMessage
   LastInteraction *net.UDPAddr
 }
@@ -63,7 +80,9 @@ func NewGossiper(address, name, peerStr string) *Gossiper {
     Peers: peerAddrs,
     Rumors: make(map[string]map[uint32]*RumorMessage),
     Router: make(map[string]*net.UDPAddr),
+    Files: make(map[string]*File),
     Timeouts: make(map[string](chan bool)),
+    DataRequestTimeouts: make(map[string](chan bool)),
     LastRumor: make(map[string]*RumorMessage),
   }
 }
@@ -124,19 +143,145 @@ func (gossiper* Gossiper) RecordRumor(rm *RumorMessage) {
   }
   gossiper.Rumors[rm.Origin][rm.ID] = rm
   if (rm.Text != "") {
-    gossiper.VisibleMessages = append(gossiper.VisibleMessages, &GossipPacket{nil, rm, nil, nil})
+    gossiper.VisibleMessages = append(gossiper.VisibleMessages, &GossipPacket{nil, rm, nil, nil, nil, nil})
   }
 }
 
 func (gossiper* Gossiper) RecordPrivate(msg *PrivateMessage) {
-  gossiper.VisibleMessages = append(gossiper.VisibleMessages, &GossipPacket{nil, nil, nil, msg})
+  gossiper.VisibleMessages = append(gossiper.VisibleMessages, &GossipPacket{nil, nil, nil, msg, nil, nil})
 }
 
 func (gossiper* Gossiper) ForwardPrivate(pm *PrivateMessage) {
   if pm.HopLimit > 0 {
     gossiper.SendPacket(
       gossiper.Router[pm.Destination],
-      &GossipPacket{nil, nil, nil, pm})
+      &GossipPacket{nil, nil, nil, pm, nil, nil})
+  }
+}
+
+func (gossiper* Gossiper) ReplyDataRequest(rq *DataRequest) {
+  key := hex.EncodeToString(rq.HashValue)
+  if gossiper.Files[key] != nil {
+    file := gossiper.Files[key]
+
+    fmt.Println("ReplyDataRequest: ", key, "found")
+    gossiper.SendPacket(
+      gossiper.Router[rq.Origin],
+      &GossipPacket{nil, nil, nil, nil, nil, &DataReply{
+        Origin: gossiper.Name,
+        Destination: rq.Origin,
+        HashValue: rq.HashValue,
+        Data: file.MetaFile,
+      }},
+    )
+  } else {
+    // Lookup file chunk with right hash.
+    for _, file := range gossiper.Files {
+      if file.Chunks[key] != nil {
+        gossiper.SendPacket(
+          gossiper.Router[rq.Origin],
+          &GossipPacket{nil, nil, nil, nil, nil, &DataReply{
+            Origin: gossiper.Name,
+            Destination: rq.Origin,
+            HashValue: rq.HashValue,
+            Data: file.Chunks[key],
+          }},
+        )
+      } else {
+        fmt.Println("ReplyDataRequest: FAILED TO FIND CHUNK WITH HASH", hex.EncodeToString(rq.HashValue))
+      }
+    }
+  }
+}
+
+func (gossiper* Gossiper) ForwardDataRequest(rq *DataRequest) {
+  if rq.HopLimit > 0 {
+    gossiper.SendPacket(
+      gossiper.Router[rq.Destination],
+      &GossipPacket{nil, nil, nil, nil, rq, nil})
+  }
+}
+
+func (gossiper* Gossiper) SendDataRequest(rq *DataRequest) {
+  gossiper.SendPacket(
+    gossiper.Router[rq.Destination],
+    &GossipPacket{nil, nil, nil, nil, rq, nil})
+  gossiper.DataRequestTimeouts[hex.EncodeToString(rq.HashValue)] = utils.SetTimeout(func() {
+    gossiper.SendDataRequest(rq)
+  }, time.Second * 5)
+}
+
+func (gossiper* Gossiper) ProcessDataReply(rp *DataReply) {
+  dataChecksum := sha256.Sum256(rp.Data)
+  dataChecksumStr := hex.EncodeToString(dataChecksum[:])
+  key := hex.EncodeToString(rp.HashValue)
+  if dataChecksumStr != key {
+    fmt.Println("WRONG CHECKSUM")
+    return
+  }
+  if gossiper.DataRequestTimeouts[key] != nil {
+    close(gossiper.DataRequestTimeouts[key])
+    gossiper.DataRequestTimeouts[key] = nil
+  }
+  if gossiper.Files[key] != nil && gossiper.Files[key].Status == -1 {
+    var file *File = gossiper.Files[key]
+    // Fill in metafile
+    file.MetaFile = rp.Data
+    file.NumChunks = int64(len(rp.Data)) / int64(32)
+    fmt.Println("DOWNLOADING metafile of", file.FileName, "from", rp.Origin)
+
+    // Fill in stub Chunks
+    for offset := 0; offset < len(rp.Data); offset += 32 {
+      hashSlice := file.MetaFile[offset:(offset + 32)]
+      file.Chunks[hex.EncodeToString(hashSlice)] = []byte{}
+    }
+    file.Status = 0
+    // Request first chunk
+    gossiper.SendDataRequest(&DataRequest{
+      Origin: gossiper.Name,
+      Destination: rp.Origin,
+      HopLimit: 10,
+      HashValue: file.MetaFile[0:32],
+    })
+  } else {
+    // Fill in unfilled file chunk
+    var file *File = nil
+    for _, f := range gossiper.Files {
+      if f.Chunks[key] != nil && len(f.Chunks[key]) == 0 {
+        file = f
+      }
+    }
+
+    if file != nil {
+      file.Chunks[key] = rp.Data
+      file.Status++
+      fmt.Println("DOWNLOADING", file.FileName, "chunk", file.Status, "from", rp.Origin)
+
+      if (file.Status == file.NumChunks) {
+        // Reconstruct the file locally when done downloading
+        file.Reconstruct()
+      } else {
+        offset := file.Status * 32
+        requested := file.MetaFile[offset:(offset + 32)]
+        // Request next chunk
+        gossiper.SendDataRequest(&DataRequest{
+          Origin: gossiper.Name,
+          Destination: rp.Origin,
+          HopLimit: 10,
+          HashValue: requested,
+        })
+      }
+    } else {
+      fmt.Println("DataReplyHandler: CAN'T FIND HASH", key)
+    }
+  }
+}
+
+func (gossiper* Gossiper) ForwardDataReply(rp *DataReply) {
+  if rp.HopLimit > 0 {
+    gossiper.SendPacket(
+      gossiper.Router[rp.Destination],
+      &GossipPacket{nil, nil, nil, nil, nil, rp})
   }
 }
 
@@ -171,8 +316,13 @@ func (gossiper *Gossiper) GetNewRumorForPeer(peerPacket *StatusPacket) *RumorMes
   statusMap := peerPacket.ToMap()
   for origin := range gossiper.Rumors {
     nextId := gossiper.GetNextIDForOrigin(origin)
-    if statusMap[origin] == nextId - 1 {
+    mapValue, exists := statusMap[origin]
+    if mapValue == nextId - 1 {
       return gossiper.GetMessage(origin, nextId - 1)
+    }
+    firstMessage := gossiper.GetMessage(origin, 1)
+    if !exists && firstMessage != nil {
+      return firstMessage
     }
   }
   return nil
@@ -214,7 +364,7 @@ func (gossiper *Gossiper) MongerRumor(msg *RumorMessage, exclude *net.UDPAddr, i
   }
   // Forward message to random peer
   destination := gossiper.RandomPeer(exclude)
-  gossiper.SendPacket(destination, &GossipPacket{nil, msg, nil, nil})
+  gossiper.SendPacket(destination, &GossipPacket{nil, msg, nil, nil, nil, nil})
   if isFlippedCoin {
     fmt.Println("FLIPPED COIN sending rumor to", destination.String())
   }
@@ -236,7 +386,49 @@ func (gossiper *Gossiper) SendRouteMessage() {
 }
 func (gossiper *Gossiper) CoinFlip(msg *RumorMessage, exclude *net.UDPAddr) {
   // Pick a new random peer and start mongering
-  if rand.Int() % 2 == 0 {
+  if rand.Int() % 2 == 0 && len(gossiper.Peers) > 1 {
     gossiper.MongerRumor(msg, exclude, true)
   }
+}
+
+func (gossiper* Gossiper) AddStubFile(hash string, decodedHash []byte, fileName string) {
+  gossiper.Files[hash] = &File{
+    FileName: fileName,
+    FileSize: -1,
+    MetaHash: decodedHash,
+    MetaFile: nil,
+    Chunks: make(map[string][]byte),
+    Status: int64(-1),
+  }
+}
+
+func (gossiper *Gossiper) AddFile(fileName string, fileSize int64, metaHash [32]byte, metaFile []byte, chunks map[string][]byte, status int64) {
+  key := hex.EncodeToString(metaHash[:])
+  gossiper.Files[key] = &File{
+    FileName: fileName,
+    FileSize: fileSize,
+    MetaHash: metaHash[:],
+    MetaFile: metaFile,
+    NumChunks: int64(len(chunks)),
+    Chunks: chunks,
+    Status: status,
+  }
+  fmt.Println("UPLOADED file", key, "with", len(chunks), "chunks")
+}
+
+func (file *File) Reconstruct() {
+  local, err := os.Create("_Downloads/" + file.FileName)
+  utils.CheckError(err)
+  defer local.Close()
+  fileSize := 0
+  for offset := 0; offset < len(file.MetaFile); offset += 32 {
+    hashSlice := file.MetaFile[offset:(offset + 32)]
+    n, err := local.Write(file.Chunks[hex.EncodeToString(hashSlice)]);
+    utils.CheckError(err)
+    fileSize += n
+  }
+  if file.FileSize != int64(fileSize) {
+    file.FileSize = int64(fileSize)
+  }
+  fmt.Println("RECONSTRUCTED file", file.FileName)
 }

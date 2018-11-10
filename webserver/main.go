@@ -12,6 +12,11 @@ import (
   . "github.com/nt1m/Peerster/types"
 )
 
+type ReturnedFile struct {
+  Name string
+  Hash string
+}
+
 var gossiper *Gossiper
 var port string
 
@@ -27,6 +32,8 @@ func NewWebServer(p string, g *Gossiper) {
 
   router.HandleFunc("/node", NodeGetHandler).Methods("GET")
   router.HandleFunc("/node", NodePostHandler).Methods("POST")
+
+  router.HandleFunc("/file", FileGetHandler).Methods("GET")
 
   router.HandleFunc("/id", IdGetHandler).Methods("GET")
   router.PathPrefix("/").Handler(http.FileServer(http.Dir("./static/")))
@@ -105,6 +112,19 @@ func IdGetHandler(w http.ResponseWriter, r *http.Request) {
   w.WriteHeader(http.StatusOK)
   w.Header().Set("Content-Type", "text/plain")
   io.WriteString(w, gossiper.Name)
+}
+
+func FileGetHandler(w http.ResponseWriter, r *http.Request) {
+  w.WriteHeader(http.StatusOK)
+  w.Header().Set("Content-Type", "application/json")
+
+  list := make([]*ReturnedFile, 0, len(gossiper.Files));
+  for hash, file := range gossiper.Files {
+    list = append(list, &ReturnedFile{file.FileName, hash})
+  }
+  json, err := json.Marshal(list)
+  FailIfErr(w, http.StatusInternalServerError, err)
+  io.WriteString(w, string(json))
 }
 
 func FailIfErr(w http.ResponseWriter, statusCode int, err error) {

@@ -10,23 +10,48 @@
     <input type="checkbox" id="sidebar-toggle">
     <div id="sidebar-contents">
       <p class="bold">You are: <span id="node-id"></span></p>
-      <p class="bold">Connected to:</p>
+      <p class="bold">Peers:</p>
       <ul id="node-peers"></ul>
 
       <p class="bold">Add a new peer:</p>
       <form id="add-peer-form">
         <input type="text" class="text-input" id="add-peer-input" placeholder="127.0.0.1:5002"/>
       </form>
+      <p class="bold">Files:</p>
+      <ul id="node-files"></ul>
     </div>
   </div>
   <div id="content">
-    <form id="send-form">
-      <input type="text" class="text-input" id="send-input" placeholder="Write a message..."/>
-      <div>
-        <label for="send-destination">To: </label><select id="send-destination"></select>
-        <button id="send-button">Send</button>
-      </div>
-    </form>
+    <div class="tabs" id="header">
+      <ul class="tab-nav">
+        <li class="tab selected" data-tab="message"><a href="#">Send a message</a></li>
+        <li class="tab" data-tab="file-upload"><a href="#">Upload a file</a></li>
+        <li class="tab" data-tab="file-request"><a href="#">Request a file</a></li>
+      </ul>
+      <form id="message-form" class="tab-panel" data-tab="message">
+        <input type="text" class="text-input" id="send-input" placeholder="Write a message..."/>
+        <div>
+          <label for="send-destination">To: </label>
+          <select class="select" id="send-destination"></select>
+          <button class="button primary" id="send-button">Send</button>
+        </div>
+      </form>
+      <form id="file-upload-form" class="tab-panel" data-tab="file-upload">
+        <input type="text" id="file-upload-path" class="text-input" placeholder="Enter the path of the file..."/>
+        <div>
+          <button class="button primary" id="upload-button">Upload</button>
+        </div>
+      </form>
+      <form id="file-request-form" class="tab-panel" data-tab="file-request">
+        <div><input type="text" id="file-request-name" class="text-input" placeholder="Download name"/></div>
+        <div><input type="text" id="file-request-hash" class="text-input" placeholder="Checksum"/></div>
+        <div>
+          <label for="file-requestee">From: </label>
+          <select class="select" id="file-requestee"></select>
+          <button class="button primary">Send</button>
+        </div>
+      </form>
+    </div>
     <ul id="messages">
     </ul>
   </div>
